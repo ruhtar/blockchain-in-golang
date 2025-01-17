@@ -7,8 +7,14 @@ import (
 	"time"
 )
 
+var Blockchain []Block
+
 func main() {
-	fmt.Println("hello world")
+
+	fmt.Println("Creating Genesis Block...")
+	genesisBlock := createGenesisBlock()
+	fmt.Println("Generating blockchain...")
+	Blockchain = append(Blockchain, genesisBlock)
 }
 
 type Block struct {
@@ -25,6 +31,16 @@ func calculateHash(block Block) string {
 	h.Write([]byte(data))
 	hash := h.Sum(nil) //nil because no other data is passed to be added to the end of the calculus
 	return hex.EncodeToString(hash)
+}
+
+func createGenesisBlock() Block {
+	var genesisBlock Block
+	// newBlock.BPM = bpm
+	genesisBlock.Index = 0
+	genesisBlock.Timestamp = time.Now().Format(time.RFC3339)
+	genesisBlock.PrevHash = ""
+	genesisBlock.Hash = calculateHash(genesisBlock)
+	return genesisBlock
 }
 
 func createNewBlock(previousBlock Block, bpm int) (Block, error) {
@@ -55,4 +71,11 @@ func isValidBlock(newBlock Block, oldBlock Block) bool {
 	}
 
 	return true
+}
+
+// The blockchain uses the principle of the longest chain to validate which chain is the valid one.
+func replaceChain(blocks []Block) {
+	if len(blocks) > len(Blockchain) {
+		Blockchain = blocks
+	}
 }
