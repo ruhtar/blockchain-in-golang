@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 )
@@ -37,6 +38,10 @@ type Block struct {
 	PrevHash  string //is the SHA256 identifier of the previous record in the chain
 }
 
+type Message struct {
+	Data string
+}
+
 func calculateHash(block Block) string {
 	data := string(block.Index) + block.Timestamp + string(block.Data) + block.PrevHash
 	h := sha256.New()
@@ -47,7 +52,7 @@ func calculateHash(block Block) string {
 
 func createGenesisBlock() Block {
 	var genesisBlock Block
-	// newBlock.BPM = bpm
+	genesisBlock.Data = []byte("Genesis block")
 	genesisBlock.Index = 0
 	genesisBlock.Timestamp = time.Now().Format(time.RFC3339)
 	genesisBlock.PrevHash = ""
@@ -66,12 +71,12 @@ func createNewBlock(data string) (Block, error) {
 	return newBlock, nil
 }
 
-func isValidBlock(newBlock Block, oldBlock Block) bool {
-	if oldBlock.Index != newBlock.Index+1 {
+func isBlockValid(newBlock Block, oldBlock Block) bool {
+	if oldBlock.Index != newBlock.Index-1 {
 		return false
 	}
 
-	if newBlock.PrevHash != oldBlock.Hash {
+	if newBlock.PrevHash != oldBlock.Hash && newBlock.PrevHash != "" {
 		return false
 	}
 
@@ -115,6 +120,7 @@ func run() error {
 func makeMuxRouter() http.Handler {
 	muxRouter := mux.NewRouter()
 	muxRouter.HandleFunc("/", handleGetBlockchain).Methods("GET")
+	muxRouter.HandleFunc("/", handleWriteBlock).Methods("POST")
 	return muxRouter
 }
 
@@ -125,4 +131,40 @@ func handleGetBlockchain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	io.WriteString(w, string(bytes))
+}
+
+func handleWriteBlock(w http.ResponseWriter, r *http.Request) {
+	var m Message
+
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&m); err != nil {
+		respondWithJSON(w, r, http.StatusBadRequest, r.Body)
+		return
+	}
+	defer r.Body.Close()
+
+	newBlock, err := createNewBlock(m.Data)
+	if err != nil {
+		respondWithJSON(w, r, http.StatusInternalServerError, m)
+		return
+	}
+	if isBlockValid(newBlock, Blockchain[len(Blockchain)-1]) {
+		newBlockchain := append(Blockchain, newBlock)
+		replaceChain(newBlockchain)
+		spew.Dump(Blockchain)
+	}
+
+	respondWithJSON(w, r, http.StatusCreated, newBlock)
+
+}
+
+func respondWithJSON(w http.ResponseWriter, r *http.Request, code int, payload interface{}) {
+	response, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("HTTP 500: Internal Server Error"))
+		return
+	}
+	w.WriteHeader(code)
+	w.Write(response)
 }
